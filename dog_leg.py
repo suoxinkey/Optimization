@@ -54,7 +54,7 @@ def dogleg(gk, Bk, trust_radius):
     return pU + tau(pB_pU)
 
 def trust_region_dogleg(func, jacb, hess, x0, initial_trust_radius=1.0,
-                        max_trust_radius=100.0, eta=0.15, gt0l=14-4, maxiter=100):
+                        max_trust_radius=100.0, eta=0.15, gtol=14-4, maxiter=100):
 
     xk=x0
     trust_radius = initial_trust_radius
@@ -83,3 +83,18 @@ def trust_region_dogleg(func, jacb, hess, x0, initial_trust_radius=1.0,
             else:
                 trust_radius = trust_radius
 
+        # Choose the position for the next iteration.
+        if rhok > eta:
+            xk = xk + pk
+        else:
+            xk = xk
+
+        # Check if the gradient is small enough to stop
+        if np.linalg.norm(gk) < gtol:
+            break
+
+        # Check if we have looked at enough iterations
+        if k >= maxiter:
+            break
+        k = k + 1
+    return xk
