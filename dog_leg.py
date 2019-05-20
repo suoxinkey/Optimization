@@ -39,7 +39,7 @@ def dogleg(gk, Bk, trust_radius):
     pB = -np.linalg.inv(Bk).dot(gk)
     norm_pB = np.sqrt(np.dot(pB, pB))
     if(norm_pB < trust_radius):
-        return pB
+        return pB, False
 
     pU = - (np.dot(gk, gk) / np.dot(gk, np.dot(Bk, gk))) * gk
 
@@ -47,19 +47,23 @@ def dogleg(gk, Bk, trust_radius):
 
     # caucy point is outside of the trust-region
     if (norm_pU > trust_radius):
-        return trust_radius * pU/norm_pU
+        return trust_radius * pU/norm_pU, True
 
     pB_pU = pB - pU
-    dot_pU = np.dot(pU, pU)
-    dot_pB_pU = np.dot(pB_pU, pB_pU)
-    dot_pU_pB_pU = np.dot(pU, pB_pU)
-    fact = dot_pU_pB_pU ** 2 - dot_pB_pU * (dot_pU - trust_radius ** 2)
-    tau = (-dot_pU_pB_pU + np.sqrt(fact)) / dot_pB_pU
+    a = np.dot(pB_pU, pB_pU)
+    b = 2 * np.dot(pU, pB_pU)
+    c = np.dot(pU, pU) - trust_radius ** 2
 
-    return pU + tau * pB_pU
+    fact = b ** 2 - a * c
+    tau_a = (-b + np.sqrt(fact))/(2*a)
+    tau_b = (-b - np.sqrt(fact))/(2*a)
+
+    _, tau = sorted([tau_a, tau_b])
+
+    return pU + tau * pB_pU, True
 
 def trust_region_dogleg(func, x0, jacb=None, hess=None,  initial_trust_radius=1.0,
-                        max_trust_radius=1000.0, eta=0.15, gtol=14-4, maxiter=None):
+                        max_trust_radius=1000.0, eta=0.15, gtol=1e-4, maxiter=None):
 
     '''
     :param func: function
@@ -95,7 +99,6 @@ def trust_region_dogleg(func, x0, jacb=None, hess=None,  initial_trust_radius=1.
         raise ValueError('the initial trust radius must be less than the '
                          'max trust radius')
 
-
     if maxiter is None:
         maxiter = len(x0)*200
 
@@ -106,7 +109,7 @@ def trust_region_dogleg(func, x0, jacb=None, hess=None,  initial_trust_radius=1.
 
         gk = jacb(xk)
         Bk = hess(xk)
-        pk = dogleg(gk, Bk, trust_radius)
+        pk, hit_boundary = dogleg(gk, Bk, trust_radius)
 
         act_red = func(xk) - func(xk+pk)
         pred_red = -(np.dot(gk, pk) + 0.5 * np.dot(pk, np.dot(Bk, pk)))
@@ -120,11 +123,8 @@ def trust_region_dogleg(func, x0, jacb=None, hess=None,  initial_trust_radius=1.
 
         if(rhok<0.25):
             trust_radius = 0.25 * trust_radius
-        else:
-            if rhok > 0.75 and norm_pk == trust_radius:
-                trust_radius = min(2.0 * trust_radius, max_trust_radius)
-            else:
-                trust_radius = trust_radius
+        elif rhok > 0.75 and hit_boundary:
+            trust_radius = min(2.0 * trust_radius, max_trust_radius)
 
         # Choose the position for the next iteration.
         if rhok > eta:
